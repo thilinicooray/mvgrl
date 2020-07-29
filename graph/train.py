@@ -325,7 +325,7 @@ if __name__ == '__main__':
     import warnings
     warnings.filterwarnings("ignore")
     gpu = 1
-    torch.cuda.set_device(gpu)
+    #torch.cuda.set_device(gpu)
     layers = [2, 8, 12]
     batch = [32, 64, 128, 256]
     epoch = [20, 40, 100]
