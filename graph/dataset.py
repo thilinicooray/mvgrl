@@ -5,10 +5,6 @@ import networkx as nx
 from collections import Counter
 from utils import compute_ppr, normalize_adj
 
-import os.path
-import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-
 
 def download(dataset):
     basedir = os.path.dirname(os.path.abspath(__file__))
