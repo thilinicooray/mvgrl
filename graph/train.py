@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
-from graph.dataset import load
+from dataset import load
 
 
 class GCNLayer(nn.Module):
