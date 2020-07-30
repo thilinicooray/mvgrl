@@ -6,19 +6,35 @@ from sklearn.model_selection import GridSearchCV, StratifiedKFold
 from dataset import load
 
 
+from torch_geometric.datasets import TUDataset
+from torch_geometric.data import DataLoader
+from torch_geometric.nn import global_mean_pool, global_add_pool, global_max_pool
+from torch_geometric.utils import negative_sampling, remove_self_loops, add_self_loops, to_dense_adj, to_dense_batch
+import sys
+import json
+from torch import optim
+
+from cortex_DIM.nn_modules.mi_networks import MIFCNet, MI1x1ConvNet
+from losses import *
+from gin import Encoder, Decoder
+from evaluate_embedding import evaluate_embedding
+from model import *
+from utils_mine import imshow_grid, mse_loss, reparameterize, group_wise_reparameterize, accumulate_group_evidence
+
+
 
 class GcnInfomax(nn.Module):
-    def __init__(self, hidden_dim, num_gc_layers, alpha=0.5, beta=1., gamma=.1):
+    def __init__(self, ft_size, hidden_dim, num_gc_layers, alpha=0.5, beta=1., gamma=.1):
         super(GcnInfomax, self).__init__()
 
         self.alpha = alpha
         self.beta = beta
         self.gamma = gamma
-        self.prior = args.prior
+        #self.prior = args.prior
 
         self.embedding_dim = mi_units = hidden_dim * num_gc_layers
-        self.encoder = Encoder(dataset_num_features, hidden_dim, num_gc_layers)
-        self.decoder = Decoder(hidden_dim, hidden_dim, dataset_num_features)
+        self.encoder = Encoder(ft_size, hidden_dim, num_gc_layers)
+        self.decoder = Decoder(hidden_dim, hidden_dim, ft_size)
 
         self.local_d = FF(self.embedding_dim)
         self.global_d = FF(self.embedding_dim)
@@ -492,7 +508,8 @@ def train(dataset, gpu, num_layer=4, epoch=40, batch=64):
     patience = 20
     lr = 0.001
     l2_coef = 0.0
-    hid_units = 512
+    hid_units = 32
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     adj, diff, feat, labels, num_nodes = load(dataset)
 
@@ -504,10 +521,20 @@ def train(dataset, gpu, num_layer=4, epoch=40, batch=64):
     ft_size = feat[0].shape[1]
     max_nodes = feat[0].shape[0]
 
-    model = Model(ft_size, hid_units, num_layer)
+
+    model = GcnInfomax(ft_size, hid_units, 2).to(device)
+
+
+
+
+
+
+
+
+    #model = Model(ft_size, hid_units, num_layer)
     optimiser = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=l2_coef)
 
-    model.cuda()
+    #model.cuda()
 
     cnt_wait = 0
     best = 1e9
@@ -518,12 +545,26 @@ def train(dataset, gpu, num_layer=4, epoch=40, batch=64):
         train_idx = np.arange(adj.shape[0])
         np.random.shuffle(train_idx)
 
+        recon_loss_all = 0
+        kl_class_loss_all = 0
+        kl_node_loss_all = 0
+        mi_loss_all = 0
+
         for idx in range(0, len(train_idx), batch_size):
             model.train()
             optimiser.zero_grad()
 
             batch = train_idx[idx: idx + batch_size]
             mask = num_nodes[idx: idx + batch_size]
+
+            recon_loss, kl_class, kl_node = model(feat[batch], adj[batch], batch, )
+            recon_loss_all += recon_loss
+            kl_class_loss_all += kl_class
+            kl_node_loss_all += kl_node
+
+
+
+
 
             lv1, gv1, lv2, gv2 = model(adj[batch], diff[batch], feat[batch], mask)
 
@@ -540,7 +581,14 @@ def train(dataset, gpu, num_layer=4, epoch=40, batch=64):
             loss.backward()
             optimiser.step()
 
-        epoch_loss /= itr
+
+
+
+
+
+
+
+        '''epoch_loss /= itr
 
         # print('Epoch: {0}, Loss: {1:0.4f}'.format(epoch, epoch_loss))
 
@@ -579,7 +627,7 @@ def train(dataset, gpu, num_layer=4, epoch=40, batch=64):
         classifier = GridSearchCV(LinearSVC(), params, cv=5, scoring='accuracy', verbose=0)
         classifier.fit(x_train, y_train)
         accuracies.append(accuracy_score(y_test, classifier.predict(x_test)))
-    print(np.mean(accuracies), np.std(accuracies))
+    print(np.mean(accuracies), np.std(accuracies))'''
 
 
 if __name__ == '__main__':
