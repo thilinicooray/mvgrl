@@ -333,7 +333,7 @@ if __name__ == '__main__':
     batch = [32, 64, 128, 256]
     epoch = [20, 40, 100]
     #ds = ['MUTAG', 'PTC_MR', 'IMDB-BINARY', 'IMDB-MULTI', 'REDDIT-BINARY', 'REDDIT-MULTI-5K']
-    ds = ['IMDB-BINARY', 'IMDB-MULTI', 'REDDIT-BINARY', 'REDDIT-MULTI-5K']
+    ds = ['IMDB-MULTI', 'REDDIT-BINARY', 'REDDIT-MULTI-5K']
     seeds = [123, 132, 321, 312, 231]
     for d in ds:
         print(f'####################{d}####################')

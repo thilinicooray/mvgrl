@@ -100,6 +100,10 @@ def process(dataset):
         pass
     else:
         max_deg = max([max(dict(graph.degree).values()) for graph in graphs])
+
+        print('max degree ', max_deg)
+
+
         for graph in graphs:
             for u in graph.nodes(data=True):
                 f = np.zeros(max_deg + 1)
