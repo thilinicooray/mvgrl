@@ -238,6 +238,8 @@ def train(dataset, gpu, num_layer=4, epoch=40, batch=64):
     #print(dataset, 'feat', feat)
 
     feat = torch.FloatTensor(feat).cuda()
+
+    print('feat ', feat.size())
     diff = torch.FloatTensor(diff).cuda()
     adj = torch.FloatTensor(adj).cuda()
     labels = torch.LongTensor(labels).cuda()
@@ -264,7 +266,6 @@ def train(dataset, gpu, num_layer=4, epoch=40, batch=64):
             optimiser.zero_grad()
 
             batch = train_idx[idx: idx + batch_size]
-            print('batch ', batch)
             mask = num_nodes[idx: idx + batch_size]
 
             lv1, gv1, lv2, gv2 = model(adj[batch], diff[batch], feat[batch], mask)
