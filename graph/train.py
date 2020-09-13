@@ -92,8 +92,8 @@ class Model(nn.Module):
         return lv1, gv1, lv2, gv2
 
     def embed(self, feat, adj, diff, mask):
-        __, gv1, __, gv2 = self.forward(adj, diff, feat, mask)
-        return (gv1 + gv2).detach()
+        l1, gv1, l2, gv2 = self.forward(adj, diff, feat, mask)
+        return (gv1 + gv2).detach(), torch.sum(l1 + l2, 1)
 
 
 # Borrowed from https://github.com/fanyun-sun/InfoGraph
@@ -255,6 +255,9 @@ def train(dataset, gpu, num_layer=4, epoch=40, batch=64):
     cnt_wait = 0
     best = 1e9
 
+    acc_graph = []
+    acc_node_sum = []
+
     itr = (adj.shape[0] // batch_size) + 1
     for epoch in range(nb_epochs):
         epoch_loss = 0.0
@@ -285,9 +288,60 @@ def train(dataset, gpu, num_layer=4, epoch=40, batch=64):
 
         epoch_loss /= itr
 
-        # print('Epoch: {0}, Loss: {1:0.4f}'.format(epoch, epoch_loss))
+        print('Epoch: {0}, Loss: {1:0.4f}'.format(epoch, epoch_loss))
 
-        if epoch_loss < best:
+        model.eval()
+
+        features = feat.cuda()
+        adj = adj.cuda()
+        diff = diff.cuda()
+        labels = labels.cuda()
+
+        embeds, node_sum = model.embed(features, adj, diff, num_nodes)
+
+        x = embeds.cpu().numpy()
+        x_node = node_sum.cpu().numpy()
+        y = labels.cpu().numpy()
+
+        from sklearn.svm import LinearSVC
+        from sklearn.metrics import accuracy_score
+        params = {'C': [1]}
+        kf = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+        accuracies = []
+        for train_index, test_index in kf.split(x, y):
+
+            x_train, x_test = x[train_index], x[test_index]
+            y_train, y_test = y[train_index], y[test_index]
+            classifier = GridSearchCV(LinearSVC(), params, cv=5, scoring='accuracy', verbose=0)
+            classifier.fit(x_train, y_train)
+            accuracies.append(accuracy_score(y_test, classifier.predict(x_test)))
+        print(np.mean(accuracies), np.std(accuracies))
+
+        acc_graph.append(np.mean(accuracies))
+
+        print('graph latent accuracies ', acc_graph)
+
+        from sklearn.svm import LinearSVC
+        from sklearn.metrics import accuracy_score
+        params = {'C': [1]}
+        kf = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+        accuracies = []
+        for train_index, test_index in kf.split(x_node, y):
+
+            x_train, x_test = x_node[train_index], x_node[test_index]
+            y_train, y_test = y[train_index], y[test_index]
+            classifier = GridSearchCV(LinearSVC(), params, cv=5, scoring='accuracy', verbose=0)
+            classifier.fit(x_train, y_train)
+            accuracies.append(accuracy_score(y_test, classifier.predict(x_test)))
+        print(np.mean(accuracies), np.std(accuracies))
+
+        acc_node_sum.append(np.mean(accuracies))
+        print('node sum latent accuracies ', acc_node_sum)
+
+
+
+
+        '''if epoch_loss < best:
             best = epoch_loss
             best_t = epoch
             cnt_wait = 0
@@ -296,7 +350,7 @@ def train(dataset, gpu, num_layer=4, epoch=40, batch=64):
             cnt_wait += 1
 
         if cnt_wait == patience:
-            break
+            break'''
 
     model.load_state_dict(torch.load(f'{dataset}-{gpu}.pkl'))
 
@@ -330,12 +384,16 @@ if __name__ == '__main__':
     warnings.filterwarnings("ignore")
     gpu = 1
     #torch.cuda.set_device(gpu)
-    layers = [2, 8, 12]
-    batch = [32, 64, 128, 256]
-    epoch = [20, 40, 100]
+    #layers = [2, 8, 12]
+    layers = [2]
+    #batch = [32, 64, 128, 256]
+    batch = [128]
+    #epoch = [20, 40, 100]
+    epoch = [100]
     #ds = ['MUTAG', 'PTC_MR', 'IMDB-BINARY', 'IMDB-MULTI', 'REDDIT-BINARY', 'REDDIT-MULTI-5K']
-    ds = ['REDDIT-MULTI-5K']
-    seeds = [123, 132, 321, 312, 231]
+    ds = ['MUTAG']
+    #seeds = [123, 132, 321, 312, 231]
+    seeds = [52]
     for d in ds:
         print(f'####################{d}####################')
         for l in layers:
