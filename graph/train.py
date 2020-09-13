@@ -93,7 +93,7 @@ class Model(nn.Module):
 
     def embed(self, feat, adj, diff, mask):
         l1, gv1, l2, gv2 = self.forward(adj, diff, feat, mask)
-        return (gv1 + gv2).detach(), torch.sum(l1 + l2, 1)
+        return (gv1 + gv2).detach(), torch.sum(l1 + l2, 1).detach()
 
 
 # Borrowed from https://github.com/fanyun-sun/InfoGraph
