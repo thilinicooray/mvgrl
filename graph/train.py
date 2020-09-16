@@ -81,20 +81,20 @@ class Model(nn.Module):
 
     def forward(self, adj, diff, feat, mask):
         lv1, gv1 = self.gnn1(feat, adj, mask)
-        #lv2, gv2 = self.gnn2(feat, diff, mask)
+        lv2, gv2 = self.gnn2(feat, diff, mask)
 
         lv1 = self.mlp1(lv1)
-        #lv2 = self.mlp1(lv2)
+        lv2 = self.mlp1(lv2)
 
         gv1 = self.mlp2(gv1)
-        #gv2 = self.mlp2(gv2)
+        gv2 = self.mlp2(gv2)
 
-        #return lv1, gv1, lv2, gv2
-        return lv1, gv1
+        return lv1, gv1, lv2, gv2
+        #return lv1, gv1
 
     def embed(self, feat, adj, diff, mask):
-        l1, gv1 = self.forward(adj, diff, feat, mask)
-        return (gv1).detach(), torch.sum(l1, 1).detach()
+        lv1, gv1, lv2, gv2 = self.forward(adj, diff, feat, mask)
+        return (gv1+gv2).detach(), torch.sum(lv1 + lv2, 1).detach()
 
 
 # Borrowed from https://github.com/fanyun-sun/InfoGraph
@@ -277,18 +277,18 @@ def train(dataset, gpu, num_layer=4, epoch=40, batch=64):
                 batch = train_idx[idx: idx + batch_size]
                 mask = num_nodes[idx: idx + batch_size]
 
-                #lv1, gv1, lv2, gv2 = model(adj[batch], diff[batch], feat[batch], mask)
-                lv1, gv1 = model(adj[batch], diff[batch], feat[batch], mask)
+                lv1, gv1, lv2, gv2 = model(adj[batch], diff[batch], feat[batch], mask)
+                #lv1, gv1 = model(adj[batch], diff[batch], feat[batch], mask)
 
                 lv1 = lv1.view(batch.shape[0] * max_nodes, -1)
-                #lv2 = lv2.view(batch.shape[0] * max_nodes, -1)
+                lv2 = lv2.view(batch.shape[0] * max_nodes, -1)
 
                 batch = torch.LongTensor(np.repeat(np.arange(batch.shape[0]), max_nodes)).cuda()
 
                 loss1 = local_global_loss_(lv1, gv1, batch, 'JSD', mask)
-                #loss2 = local_global_loss_(lv2, gv1, batch, 'JSD', mask)
+                loss2 = local_global_loss_(lv2, gv1, batch, 'JSD', mask)
                 # loss3 = global_global_loss_(gv1, gv2, 'JSD')
-                loss = loss1# + loss2 #+ loss3
+                loss = loss1 + loss2 #+ loss3
                 epoch_loss += loss
                 loss.backward()
                 optimiser.step()
