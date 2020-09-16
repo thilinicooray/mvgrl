@@ -232,153 +232,158 @@ def train(dataset, gpu, num_layer=4, epoch=40, batch=64):
     patience = 20
     lr = 0.001
     l2_coef = 0.0
-    hid_units = 512
+    hidden_sizes = [16, 32, 64, 128, 256, 512]
 
-    adj, diff, feat, labels, num_nodes = load(dataset)
+    for hid_units in hidden_sizes:
 
-    #print(dataset, 'feat', feat)
+        print('current hidden dim ', hid_units)
+        #hid_units = 512
 
-    feat = torch.FloatTensor(feat).cuda()
+        adj, diff, feat, labels, num_nodes = load(dataset)
 
-    print('feat ', feat.size())
-    diff = torch.FloatTensor(diff).cuda()
-    adj = torch.FloatTensor(adj).cuda()
-    labels = torch.LongTensor(labels).cuda()
+        #print(dataset, 'feat', feat)
 
-    ft_size = feat[0].shape[1]
-    max_nodes = feat[0].shape[0]
+        feat = torch.FloatTensor(feat).cuda()
 
-    model = Model(ft_size, hid_units, num_layer)
-    optimiser = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=l2_coef)
+        print('feat ', feat.size())
+        diff = torch.FloatTensor(diff).cuda()
+        adj = torch.FloatTensor(adj).cuda()
+        labels = torch.LongTensor(labels).cuda()
 
-    model.cuda()
+        ft_size = feat[0].shape[1]
+        max_nodes = feat[0].shape[0]
 
-    cnt_wait = 0
-    best = 1e9
+        model = Model(ft_size, hid_units, num_layer)
+        optimiser = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=l2_coef)
 
-    acc_graph = []
-    acc_node_sum = []
+        model.cuda()
 
-    itr = (adj.shape[0] // batch_size) + 1
-    for epoch in range(nb_epochs):
-        epoch_loss = 0.0
-        train_idx = np.arange(adj.shape[0])
-        np.random.shuffle(train_idx)
+        cnt_wait = 0
+        best = 1e9
 
-        for idx in range(0, len(train_idx), batch_size):
-            model.train()
-            optimiser.zero_grad()
+        acc_graph = []
+        acc_node_sum = []
 
-            batch = train_idx[idx: idx + batch_size]
-            mask = num_nodes[idx: idx + batch_size]
+        itr = (adj.shape[0] // batch_size) + 1
+        for epoch in range(nb_epochs):
+            epoch_loss = 0.0
+            train_idx = np.arange(adj.shape[0])
+            np.random.shuffle(train_idx)
 
-            #lv1, gv1, lv2, gv2 = model(adj[batch], diff[batch], feat[batch], mask)
-            lv1, gv1 = model(adj[batch], diff[batch], feat[batch], mask)
+            for idx in range(0, len(train_idx), batch_size):
+                model.train()
+                optimiser.zero_grad()
 
-            lv1 = lv1.view(batch.shape[0] * max_nodes, -1)
-            #lv2 = lv2.view(batch.shape[0] * max_nodes, -1)
+                batch = train_idx[idx: idx + batch_size]
+                mask = num_nodes[idx: idx + batch_size]
 
-            batch = torch.LongTensor(np.repeat(np.arange(batch.shape[0]), max_nodes)).cuda()
+                #lv1, gv1, lv2, gv2 = model(adj[batch], diff[batch], feat[batch], mask)
+                lv1, gv1 = model(adj[batch], diff[batch], feat[batch], mask)
 
-            loss1 = local_global_loss_(lv1, gv1, batch, 'JSD', mask)
-            #loss2 = local_global_loss_(lv2, gv1, batch, 'JSD', mask)
-            # loss3 = global_global_loss_(gv1, gv2, 'JSD')
-            loss = loss1# + loss2 #+ loss3
-            epoch_loss += loss
-            loss.backward()
-            optimiser.step()
+                lv1 = lv1.view(batch.shape[0] * max_nodes, -1)
+                #lv2 = lv2.view(batch.shape[0] * max_nodes, -1)
 
-        epoch_loss /= itr
+                batch = torch.LongTensor(np.repeat(np.arange(batch.shape[0]), max_nodes)).cuda()
 
-        print('Epoch: {0}, Loss: {1:0.4f}'.format(epoch, epoch_loss))
+                loss1 = local_global_loss_(lv1, gv1, batch, 'JSD', mask)
+                #loss2 = local_global_loss_(lv2, gv1, batch, 'JSD', mask)
+                # loss3 = global_global_loss_(gv1, gv2, 'JSD')
+                loss = loss1# + loss2 #+ loss3
+                epoch_loss += loss
+                loss.backward()
+                optimiser.step()
 
-        model.eval()
+            epoch_loss /= itr
 
+            print('Epoch: {0}, Loss: {1:0.4f}'.format(epoch, epoch_loss))
+
+            model.eval()
+
+            features = feat.cuda()
+            adj = adj.cuda()
+            diff = diff.cuda()
+            labels = labels.cuda()
+
+            embeds, node_sum = model.embed(features, adj, diff, num_nodes)
+
+            x = embeds.cpu().numpy()
+            x_node = node_sum.cpu().numpy()
+            y = labels.cpu().numpy()
+
+            from sklearn.svm import LinearSVC
+            from sklearn.metrics import accuracy_score
+            params = {'C': [1]}
+            kf = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+            accuracies = []
+            for train_index, test_index in kf.split(x, y):
+
+                x_train, x_test = x[train_index], x[test_index]
+                y_train, y_test = y[train_index], y[test_index]
+                classifier = GridSearchCV(LinearSVC(), params, cv=5, scoring='accuracy', verbose=0)
+                classifier.fit(x_train, y_train)
+                accuracies.append(accuracy_score(y_test, classifier.predict(x_test)))
+            print(np.mean(accuracies), np.std(accuracies))
+
+            acc_graph.append(np.mean(accuracies))
+
+            print('graph latent accuracies ', acc_graph)
+
+            '''from sklearn.svm import LinearSVC
+            from sklearn.metrics import accuracy_score
+            params = {'C': [1]}
+            kf = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+            accuracies = []
+            for train_index, test_index in kf.split(x_node, y):
+    
+                x_train, x_test = x_node[train_index], x_node[test_index]
+                y_train, y_test = y[train_index], y[test_index]
+                classifier = GridSearchCV(LinearSVC(), params, cv=5, scoring='accuracy', verbose=0)
+                classifier.fit(x_train, y_train)
+                accuracies.append(accuracy_score(y_test, classifier.predict(x_test)))
+            print(np.mean(accuracies), np.std(accuracies))
+    
+            acc_node_sum.append(np.mean(accuracies))
+            print('node sum latent accuracies ', acc_node_sum)'''
+
+
+
+
+            '''if epoch_loss < best:
+                best = epoch_loss
+                best_t = epoch
+                cnt_wait = 0
+                torch.save(model.state_dict(), f'{dataset}-{gpu}.pkl')
+            else:
+                cnt_wait += 1
+    
+            if cnt_wait == patience:
+                break'''
+
+        '''model.load_state_dict(torch.load(f'{dataset}-{gpu}.pkl'))
+    
         features = feat.cuda()
         adj = adj.cuda()
         diff = diff.cuda()
         labels = labels.cuda()
-
-        embeds, node_sum = model.embed(features, adj, diff, num_nodes)
-
+    
+        embeds = model.embed(features, adj, diff, num_nodes)
+    
         x = embeds.cpu().numpy()
-        x_node = node_sum.cpu().numpy()
         y = labels.cpu().numpy()
-
+    
         from sklearn.svm import LinearSVC
         from sklearn.metrics import accuracy_score
-        params = {'C': [1]}
-        kf = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+        params = {'C': [0.001, 0.01, 0.1, 1, 10, 100, 1000]}
+        kf = StratifiedKFold(n_splits=10, shuffle=True, random_state=None)
         accuracies = []
         for train_index, test_index in kf.split(x, y):
-
+    
             x_train, x_test = x[train_index], x[test_index]
             y_train, y_test = y[train_index], y[test_index]
             classifier = GridSearchCV(LinearSVC(), params, cv=5, scoring='accuracy', verbose=0)
             classifier.fit(x_train, y_train)
             accuracies.append(accuracy_score(y_test, classifier.predict(x_test)))
-        print(np.mean(accuracies), np.std(accuracies))
-
-        acc_graph.append(np.mean(accuracies))
-
-        print('graph latent accuracies ', acc_graph)
-
-        from sklearn.svm import LinearSVC
-        from sklearn.metrics import accuracy_score
-        params = {'C': [1]}
-        kf = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
-        accuracies = []
-        for train_index, test_index in kf.split(x_node, y):
-
-            x_train, x_test = x_node[train_index], x_node[test_index]
-            y_train, y_test = y[train_index], y[test_index]
-            classifier = GridSearchCV(LinearSVC(), params, cv=5, scoring='accuracy', verbose=0)
-            classifier.fit(x_train, y_train)
-            accuracies.append(accuracy_score(y_test, classifier.predict(x_test)))
-        print(np.mean(accuracies), np.std(accuracies))
-
-        acc_node_sum.append(np.mean(accuracies))
-        print('node sum latent accuracies ', acc_node_sum)
-
-
-
-
-        '''if epoch_loss < best:
-            best = epoch_loss
-            best_t = epoch
-            cnt_wait = 0
-            torch.save(model.state_dict(), f'{dataset}-{gpu}.pkl')
-        else:
-            cnt_wait += 1
-
-        if cnt_wait == patience:
-            break'''
-
-    model.load_state_dict(torch.load(f'{dataset}-{gpu}.pkl'))
-
-    features = feat.cuda()
-    adj = adj.cuda()
-    diff = diff.cuda()
-    labels = labels.cuda()
-
-    embeds = model.embed(features, adj, diff, num_nodes)
-
-    x = embeds.cpu().numpy()
-    y = labels.cpu().numpy()
-
-    from sklearn.svm import LinearSVC
-    from sklearn.metrics import accuracy_score
-    params = {'C': [0.001, 0.01, 0.1, 1, 10, 100, 1000]}
-    kf = StratifiedKFold(n_splits=10, shuffle=True, random_state=None)
-    accuracies = []
-    for train_index, test_index in kf.split(x, y):
-
-        x_train, x_test = x[train_index], x[test_index]
-        y_train, y_test = y[train_index], y[test_index]
-        classifier = GridSearchCV(LinearSVC(), params, cv=5, scoring='accuracy', verbose=0)
-        classifier.fit(x_train, y_train)
-        accuracies.append(accuracy_score(y_test, classifier.predict(x_test)))
-    print(np.mean(accuracies), np.std(accuracies))
+        print(np.mean(accuracies), np.std(accuracies))'''
 
 
 if __name__ == '__main__':
@@ -395,7 +400,7 @@ if __name__ == '__main__':
     #ds = ['MUTAG', 'PTC_MR', 'IMDB-BINARY', 'IMDB-MULTI', 'REDDIT-BINARY', 'REDDIT-MULTI-5K']
     ds = ['MUTAG']
     #seeds = [123, 132, 321, 312, 231]
-    seeds = [52]
+    seeds = [42]
     for d in ds:
         print(f'####################{d}####################')
         for l in layers:
