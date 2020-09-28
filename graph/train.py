@@ -232,7 +232,7 @@ def train(dataset, gpu, num_layer=4, epoch=40, batch=64):
     patience = 20
     lr = 0.001
     l2_coef = 0.0
-    hidden_sizes = [16, 32, 64, 128, 256, 512]
+    hidden_sizes = [32]
 
     for hid_units in hidden_sizes:
 
@@ -398,7 +398,7 @@ if __name__ == '__main__':
     #epoch = [20, 40, 100]
     epoch = [100]
     #ds = ['MUTAG', 'PTC_MR', 'IMDB-BINARY', 'IMDB-MULTI', 'REDDIT-BINARY', 'REDDIT-MULTI-5K']
-    ds = ['IMDB-BINARY']
+    ds = ['REDDIT-BINARY']
     #seeds = [123, 132, 321, 312, 231]
     seeds = [42]
     for d in ds:
