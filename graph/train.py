@@ -398,7 +398,7 @@ if __name__ == '__main__':
     #epoch = [20, 40, 100]
     epoch = [100]
     #ds = ['MUTAG', 'PTC_MR', 'IMDB-BINARY', 'IMDB-MULTI', 'REDDIT-BINARY', 'REDDIT-MULTI-5K']
-    ds = ['REDDIT-BINARY']
+    ds = ['REDDIT-MULTI-5K']
     #seeds = [123, 132, 321, 312, 231]
     seeds = [42]
     for d in ds:
